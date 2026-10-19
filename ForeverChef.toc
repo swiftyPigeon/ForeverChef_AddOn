@@ -1,0 +1,26 @@
+## Interface: 16000, 16001
+## Title: Forever Chef
+## Notes: Cooking companion: every Cooking recipe on ingredient tooltips (green known, red not), where to learn each one, and map waypoints to get there.
+## Author: swiftyPigeon
+## X-License: MIT
+## X-Website: https://github.com/swiftyPigeon/ForeverChef_AddOn
+## Version: 0.6.1
+## SavedVariables: ForeverChefDB
+## SavedVariablesPerCharacter: ForeverChefCharDB
+## IconTexture: Interface\Icons\INV_Misc_Food_15
+## AddonCompartmentFunc: ForeverChef_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: ForeverChef_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: ForeverChef_OnAddonCompartmentLeave
+
+Core.lua
+Geo.lua
+Export.lua
+CookingData.lua
+CookingSources.lua
+Recipes.lua
+SourceRecorder.lua
+UI.lua
+Launcher.lua
+Toast.lua
+Waypoints.lua
+RecipeDetail.lua
