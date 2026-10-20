@@ -9,7 +9,8 @@ First CurseForge release.
 - Recipe window with recipe counters and a Zone column ("Multiple Zones" when a
   recipe can be learned in several). Click headers to sort and group; they
   stack, e.g. zones inside each Known / Not known group. Recipes new in
-  WoW: Forever are marked [New].
+  WoW: Forever are marked [New]. A Buff drop-down narrows the list to recipes
+  whose food gives a chosen buff (Strength, Stamina, Spell Damage, ...).
 - Detail pop-up per recipe: ingredients, required skill, where to learn it, and
   the food's effect.
 - Where to learn a recipe is shown when two different websites agree or it was

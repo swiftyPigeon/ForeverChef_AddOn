@@ -16,7 +16,7 @@ FC.COLORS = {
 }
 local C = FC.COLORS
 
-local WIDTH, HEIGHT = 620, 480
+local WIDTH, HEIGHT = 620, 512
 local ROW_HEIGHT = 22
 
 local function backdrop(frame, bg, edge)
@@ -98,15 +98,18 @@ local TABS = {
         empty = "No Cooking recipes found.",
         rows = function()
             local rows = {}
+            local filter = FC:BuffFilter()
             for _, r in ipairs(FC:RecipeRows()) do
-                local status = r.known and "Known" or "Not known"
-                table.insert(rows, {
-                    r.new and (r.name .. " |cff7fc8ff[New]|r") or r.name,
-                    r.known and "|cff40d15cKnown|r" or "|cffed4540Not known|r", r.learnFrom, r.zone,
-                    sort = { r.name, status, r.learnFrom, r.zone },
-                    group = { nil, status, r.category, r.zone },
-                    known = r.known, recipeID = r.id,
-                })
+                if not filter or r.buffs[filter] then
+                    local status = r.known and "Known" or "Not known"
+                    table.insert(rows, {
+                        r.new and (r.name .. " |cff7fc8ff[New]|r") or r.name,
+                        r.known and "|cff40d15cKnown|r" or "|cffed4540Not known|r", r.learnFrom, r.zone,
+                        sort = { r.name, status, r.learnFrom, r.zone },
+                        group = { nil, status, r.category, r.zone },
+                        known = r.known, recipeID = r.id,
+                    })
+                end
             end
             table.sort(rows, function(a, b)
                 if a.known ~= b.known then return not a.known end
@@ -253,6 +256,86 @@ local function layoutCells(cells, columns)
     end
 end
 
+-- The active buff filter key, or nil for all recipes (saved per character).
+function FC:BuffFilter()
+    return self.char.ui and self.char.ui.buffFilter
+end
+
+local function filterLabel(key)
+    for _, filter in ipairs(FC.BUFF_FILTERS or {}) do
+        if filter[1] == key then return filter[2] end
+    end
+    return key
+end
+
+local menu
+
+-- Drop-down list of buffs, each with how many recipes give it; empty ones are left out.
+local function createBuffMenu()
+    menu = CreateFrame("Frame", "ForeverChefBuffMenu", window, "BackdropTemplate")
+    menu:SetFrameStrata("DIALOG")
+    menu:SetPoint("TOPLEFT", window.filterButton, "BOTTOMLEFT", 0, -2)
+    menu:SetWidth(220)
+    backdrop(menu, { C.background[1], C.background[2], C.background[3], 1 }, C.border)
+    menu:EnableMouse(true)
+    menu.items = {}
+    menu:Hide()
+end
+
+local function menuItem(index)
+    local item = menu.items[index]
+    if item then return item end
+    item = CreateFrame("Button", nil, menu)
+    item:SetHeight(20)
+    item:SetPoint("TOPLEFT", 1, -1 - (index - 1) * 20)
+    item:SetPoint("RIGHT", -1, 0)
+    item.label = label(item, 11, C.text)
+    item.label:SetPoint("LEFT", 10, 0)
+    item.count = label(item, 10, C.muted, "RIGHT")
+    item.count:SetPoint("RIGHT", -10, 0)
+    local highlight = item:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 0.15)
+    item:SetScript("OnClick", function(self)
+        FC.char.ui = FC.char.ui or {}
+        FC.char.ui.buffFilter = self.key
+        menu:Hide()
+        FC:RefreshLists()
+    end)
+    menu.items[index] = item
+    return item
+end
+
+function FC:ToggleBuffMenu()
+    if not window then return end
+    if not menu then createBuffMenu() end
+    if menu:IsShown() then
+        menu:Hide()
+        return
+    end
+    local counts, total = {}, 0
+    for _, r in ipairs(self:RecipeRows()) do
+        total = total + 1
+        for key in pairs(r.buffs) do counts[key] = (counts[key] or 0) + 1 end
+    end
+    local active = self:BuffFilter()
+    local options = { { nil, "All recipes", total } }
+    for _, filter in ipairs(self.BUFF_FILTERS) do
+        if counts[filter[1]] then table.insert(options, { filter[1], filter[2], counts[filter[1]] }) end
+    end
+    for i, option in ipairs(options) do
+        local item = menuItem(i)
+        item.key = option[1]
+        item.label:SetText(option[2])
+        item.label:SetTextColor(unpack(option[1] == active and C.accent or C.text))
+        item.count:SetText(option[3])
+        item:Show()
+    end
+    for i = #options + 1, #menu.items do menu.items[i]:Hide() end
+    menu:SetHeight(#options * 20 + 2)
+    menu:Show()
+end
+
 function FC:RefreshLists()
     if not window or not window:IsShown() then return end
     local total, known = self:RecipeStats()
@@ -317,6 +400,14 @@ function FC:RefreshLists()
     window.emptyText:SetText(tab.empty)
     if #data == 0 then window.emptyText:Show() else window.emptyText:Hide() end
     window.quietButton.label:SetText(self.char.quiet and "Pop-ups: Off" or "Pop-ups: On")
+    local filter = self:BuffFilter()
+    window.filterButton.label:SetText("Buff:  " .. (filter and filterLabel(filter) or "All recipes"))
+    window.filterButton:SetBackdropBorderColor(unpack(filter and C.accent or C.border))
+    local shown = 0
+    for _, values in ipairs(data) do
+        if not values.heading then shown = shown + 1 end
+    end
+    window.filterCount:SetText(filter and string.format("%d of %d recipes", shown, total) or "")
     window.clearWaypointsButton:SetAlpha(#self:Waypoints() > 0 and 1 or 0.45)
     self.listsDirty = nil
 end
@@ -377,9 +468,22 @@ local function createWindow()
 
     frame.tab = TABS[1]
 
+    -- Buff filter: a dropdown that narrows the list to recipes whose food gives that buff.
+    frame.filterButton = button(frame, "", 220, function() FC:ToggleBuffMenu() end)
+    frame.filterButton:SetPoint("TOPLEFT", 16, -120)
+    frame.filterButton.label:ClearAllPoints()
+    frame.filterButton.label:SetPoint("LEFT", 10, 0)
+    frame.filterButton.label:SetJustifyH("LEFT")
+    frame.filterButton.arrow = frame.filterButton:CreateTexture(nil, "OVERLAY")
+    frame.filterButton.arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
+    frame.filterButton.arrow:SetSize(12, 12)
+    frame.filterButton.arrow:SetPoint("RIGHT", -8, -3)
+    frame.filterCount = label(frame, 10, C.muted)
+    frame.filterCount:SetPoint("LEFT", frame.filterButton, "RIGHT", 10, 0)
+
     -- List
     local listBox = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    listBox:SetPoint("TOPLEFT", 16, -124)
+    listBox:SetPoint("TOPLEFT", 16, -156)
     listBox:SetPoint("BOTTOMRIGHT", -16, 52)
     backdrop(listBox, C.panel, C.border)
     local headerRow = CreateFrame("Frame", nil, listBox)

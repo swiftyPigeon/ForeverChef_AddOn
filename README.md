@@ -19,6 +19,9 @@ get there.
   group. Click an active header again to reverse it, a third time to remove it.
 - **New recipes.** Recipes that are new in WoW: Forever (not in Classic) are
   marked **[New]** in light blue after their name.
+- **Buff filter.** The *Buff* drop-down above the list narrows it to recipes
+  whose food gives that buff (Strength, Stamina, Spell Damage, Fishing skill,
+  mana, camp features, ...), with how many recipes give each one.
 - **Recipe details.** Click a recipe for its ingredients (and how many you
   carry), required skill, every vendor, trainer, quest giver or drop that
   teaches it, and the food's effect (health/mana and the Well Fed buff).

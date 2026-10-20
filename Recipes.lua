@@ -407,6 +407,49 @@ function FC:FoodEffect(recipeID)
     return recipe.effect
 end
 
+-- Buff filters for the recipe window, in menu order: { key, label, patterns }.
+-- Matched against the built-in English effect text (the game's own text can be
+-- in another language). "health" (food with no buff) and "other" are decided
+-- in RecipeBuffs.
+FC.BUFF_FILTERS = {
+    { "strength", "Strength", { "%d+ strength" } },
+    { "agility", "Agility", { "%d+ agility" } },
+    { "stamina", "Stamina", { "%d+ stamina", "stamina%-boosting" } },
+    { "intellect", "Intellect", { "%d+ intellect" } },
+    { "spirit", "Spirit", { "%d+ spirit", "and spirit" } },
+    { "attack", "Attack Power", { "%d+ attack power" } },
+    { "spell", "Spell Damage", { "%d+ spell damage", "spell damage by" } },
+    { "healing", "Healing", { "%d+ healing power", "healing done by" } },
+    { "crit", "Critical Strike", { "critical strike" } },
+    { "armor", "Armor", { "%d+ armor" } },
+    { "fishing", "Fishing skill", { "fishing skill" } },
+    { "herbalism", "Herbalism skill", { "herbalism skill" } },
+    { "speed", "Movement speed", { "movement speed" } },
+    { "mana", "Restores mana", { "%d+ mana" } },
+    { "camp", "Camp features", { "camp%a* feature" } },
+    { "health", "Health only (no buff)" },
+    { "other", "Other effects" },
+}
+
+-- The buff filter keys a recipe's food matches, as a set.
+function FC:RecipeBuffs(recipeID)
+    local recipe = recipes[recipeID]
+    local effect = recipe and recipe.effect and recipe.effect:lower() or ""
+    local buffs, any = {}, false
+    for _, filter in ipairs(self.BUFF_FILTERS) do
+        for _, pattern in ipairs(filter[3] or {}) do
+            if effect:find(pattern) then
+                buffs[filter[1]], any = true, true
+                break
+            end
+        end
+    end
+    if not any then
+        if effect:find("%d+ health") or effect:find("heals %d+") then buffs.health = true else buffs.other = true end
+    end
+    return buffs
+end
+
 -- Splits "a; b; ; d" keeping empty entries, so names/zones/coords stay aligned.
 local function splitList(text)
     local list = {}
@@ -527,6 +570,7 @@ function FC:RecipeRows()
             end
             table.insert(rows, {
                 id = recipeID, name = spellName(recipeID, recipe.name), known = known, new = new,
+                buffs = self:RecipeBuffs(recipeID),
                 learnFrom = known and "" or self:RecipeSourceShort(recipeID, true),
                 category = known and "Known" or self:RecipeSourceShort(recipeID, true),
                 zone = known and "" or self:RecipeZone(recipeID),
