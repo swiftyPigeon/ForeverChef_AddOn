@@ -4,10 +4,10 @@
 ## Author: swiftyPigeon
 ## X-License: MIT
 ## X-Website: https://github.com/swiftyPigeon/ForeverChef_AddOn
-## Version: 0.6.1
+## Version: 0.7.0
 ## SavedVariables: ForeverChefDB
 ## SavedVariablesPerCharacter: ForeverChefCharDB
-## IconTexture: Interface\Icons\INV_Misc_Food_15
+## IconTexture: Interface\AddOns\ForeverChef\Media\ForeverChefIcon.blp
 ## AddonCompartmentFunc: ForeverChef_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: ForeverChef_OnAddonCompartmentEnter
 ## AddonCompartmentFuncOnLeave: ForeverChef_OnAddonCompartmentLeave
@@ -23,4 +23,7 @@ UI.lua
 Launcher.lua
 Toast.lua
 Waypoints.lua
+MapPins.lua
+MinimapPins.lua
 RecipeDetail.lua
+Ranks.lua

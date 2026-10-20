@@ -3,7 +3,8 @@ local ADDON_NAME, FC = ...
 -- Pop-up with everything about one Cooking recipe, opened by clicking its row in
 -- the Recipes tab: status, required skill, ingredients (and how many you carry),
 -- every place to learn it, and what eating the food does. Each place with a map position has a radio
--- button that sets a map waypoint (and a TomTom arrow when TomTom is installed).
+-- button that sets a map waypoint (and a TomTom arrow when TomTom is installed). A recipe with no
+-- confirmed place shows "Suggested" ones instead (named by a single website).
 local C = FC.COLORS
 local WIDTH, HEIGHT = 400, 460
 local ROW_GAP = 4
@@ -132,10 +133,19 @@ local function render(detail)
         local row = takeLocationRow()
         row.location = location
         row.key = detail.id .. ":" .. i .. ":" .. location.who
-        row.title:SetText(location.label .. "  -  " .. (location.quest or location.who))
-        local hasPosition = not location.noWaypoint and location.x and (location.map or FC:MapIDForZone(location.zone))
+        local label = location.suggested and ("|cffe0b040Suggested|r  " .. location.label) or location.label
+        row.title:SetText(label .. "  -  " .. (location.quest or location.who))
+        local hasPosition = not location.noWaypoint and location.x
+            and (location.map or FC:MapIDForZone(location.zone))
         local where
-        if location.note then
+        if location.suggested then
+            where = location.zone or ""
+            if location.x then
+                where = string.format("%s  (%.1f, %.1f)%s", where, location.x, location.y,
+                    location.recorded and "  - recorded in game" or "")
+            end
+            if location.note and location.note ~= "" then where = where .. (where ~= "" and "\n" or "") .. location.note end
+        elseif location.note then
             where = location.note
         elseif location.noWaypoint then
             where = ""
@@ -156,6 +166,11 @@ local function render(detail)
         row:SetHeight(row.title:GetStringHeight() + row.where:GetStringHeight() + 4)
         row:SetPoint("TOPLEFT", popup.content, "TOPLEFT", 4, -y)
         y = y + row:GetHeight() + ROW_GAP + 2
+    end
+    if detail.locations[1] and detail.locations[1].suggested then
+        local line = takeText(10, C.muted)
+        line:SetText("Suggested by one source only; confirmed once found in game.")
+        y = placeText(line, y + 2, 4)
     end
     local hidden = {}
     for faction in pairs(detail.hidden) do table.insert(hidden, faction) end
@@ -239,6 +254,7 @@ end
 
 function FC:ShowRecipeDetail(recipeID)
     if not popup then create() end
+    if FC.HideRanks then FC:HideRanks() end   -- they share a spot
     local detail = self:RecipeDetail(recipeID)
     if not detail then return end
     popup.recipeID = recipeID

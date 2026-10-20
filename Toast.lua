@@ -139,9 +139,18 @@ local function createToast()
     toast:Hide()
 end
 
+local MAX_WAITING = 3
+
+-- Queues a message. Repeats of the message on screen or already waiting are
+-- dropped, and only the newest few wait, so pop-ups cannot pile up.
 function FC:ShowToast(message)
     if not toast then createToast() end
+    if toast:IsShown() and toast.text:GetText() == message then return end
+    for _, waiting in ipairs(queue) do
+        if waiting == message then return end
+    end
     table.insert(queue, message)
+    while #queue > MAX_WAITING do table.remove(queue, 1) end
     if not toast:IsShown() then showNext() end
 end
 

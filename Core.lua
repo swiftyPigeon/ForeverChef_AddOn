@@ -52,7 +52,7 @@ function FC.Round(value, places)
 end
 
 local function newDB()
-    return { version = DB_VERSION, recipes = {}, observed = {}, npcLocations = {} }
+    return { version = DB_VERSION, recipes = {}, observed = {}, npcLocations = {}, trainerRanks = {} }
 end
 
 FC:On("ADDON_LOADED", function(_, name)
@@ -70,7 +70,7 @@ FC:On("ADDON_LOADED", function(_, name)
         local ok, err = pcall(fn)
         if not ok then FC:Print("Startup error: " .. tostring(err)) end
     end
-    FC:Print("Cooking recipes are on your ingredient tooltips. Click the cooking scroll on the minimap or type /fchef.")
+    FC:Print("Cooking recipes are on your ingredient tooltips. Click the Forever Chef button on the minimap or type /fchef.")
 end)
 
 function FC:HandleSlash(message)
@@ -90,13 +90,15 @@ function FC:HandleSlash(message)
         self:ShowToast("Pop-up moved back above action bar 1.")
     elseif command == "" then
         self:ToggleWindow()
+    elseif command == "ranks" then
+        self:ToggleRanks()
     elseif command == "reset" then
         StaticPopup_Show("FOREVERCHEF_RESET")
     else
         local total, known = self:RecipeStats()
         self:Print(string.format("You know %d of %d Cooking recipes.", known, total))
         self:Print(string.format("Recorded in game: %d recipe sources, %d NPC positions.", self:ObservedCount(), self:NPCLocationCount()))
-        self:Print("Commands: /fchef (window) | status | export | quiet | toast | toast reset | debug | reset")
+        self:Print("Commands: /fchef (window) | ranks | status | export | quiet | toast | toast reset | debug | reset")
     end
 end
 

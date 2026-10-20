@@ -18,6 +18,10 @@ local HEADER_ICON = "|TInterface\\Icons\\INV_Misc_Food_15:14:14:0:0|t "
 local recipes = {}     -- recipeID -> { name, reagents = { [itemID] = count }, items, auto, source }
 local byReagent = {}   -- itemID -> { recipeID, ... }
 local byScroll = {}    -- recipe scroll itemID -> { recipeID, ... }
+-- Forever keeps some Classic recipes next to a reworked copy with the same name
+-- (Basic Campfire). They are one recipe to the player: copies[id] lists every ID
+-- sharing its name, and primary[id] is the one the window shows.
+local copies, primary = {}, {}
 local scanPending
 
 local function isSecret(value)
@@ -47,6 +51,26 @@ local function rebuildIndex()
         recipe.source = scanned.source
         recipes[recipeID] = recipe
     end
+    wipe(copies)
+    wipe(primary)
+    local byName = {}
+    for recipeID, recipe in pairs(recipes) do
+        byName[recipe.name] = byName[recipe.name] or {}
+        table.insert(byName[recipe.name], recipeID)
+    end
+    -- Show the copy with researched sources, else the one with game data
+    -- (automatic, creates an item), else the newest ID.
+    local function rank(id)
+        local recipe = recipes[id]
+        return (FC.CookingSources and FC.CookingSources[id] and 4 or 0) + ((recipe.auto or recipe.creates) and 2 or 0)
+    end
+    for _, ids in pairs(byName) do
+        table.sort(ids, function(a, b)
+            if rank(a) ~= rank(b) then return rank(a) > rank(b) end
+            return a > b
+        end)
+        for _, id in ipairs(ids) do copies[id], primary[id] = ids, ids[1] end
+    end
     for recipeID, recipe in pairs(recipes) do
         for itemID in pairs(recipe.reagents) do
             byReagent[itemID] = byReagent[itemID] or {}
@@ -60,16 +84,37 @@ local function rebuildIndex()
 end
 FC.RebuildRecipeIndex = rebuildIndex
 
+-- Cooking recipes with this name (the game's localized name or the built-in
+-- English one), e.g. to match a trainer's list. nil if none.
+function FC:RecipesNamed(name)
+    local found
+    for recipeID, recipe in pairs(recipes) do
+        if spellName(recipeID, recipe.name) == name or recipe.name == name then
+            found = found or {}
+            table.insert(found, recipeID)
+        end
+    end
+    return found
+end
+
 -- Cooking recipes taught by a recipe scroll item, or nil if it is not one.
 function FC:RecipesForScroll(itemID)
     return byScroll[itemID]
 end
 
-function FC:IsRecipeKnown(recipeID)
-    if self.char.knownRecipes[recipeID] then return true end
+local function knowsSpell(recipeID)
+    if FC.char.knownRecipes[recipeID] then return true end
     if IsPlayerSpell then
         local ok, known = pcall(IsPlayerSpell, recipeID)
         if ok and known and not isSecret(known) then return true end
+    end
+    return false
+end
+
+-- Known when this character knows the recipe or a same-name copy of it.
+function FC:IsRecipeKnown(recipeID)
+    for _, id in ipairs(copies[recipeID] or { recipeID }) do
+        if knowsSpell(id) then return true end
     end
     return false
 end
@@ -171,12 +216,16 @@ end
 local OPEN_TO_ALL = { Neutral = true, Both = true, [""] = true }
 
 -- Sources this character's faction can use: ones recorded in game first, then
--- the researched list. `other` names the faction of a hidden source, so
--- "Alliance only" can be shown when nothing usable is left.
+-- the researched list, then (with neither) single-website suggestions. `other`
+-- names the faction of a hidden source, so "Alliance only" can be shown when
+-- nothing usable is left.
 local function usableSources(recipeID)
     local all = {}
     for _, source in ipairs(FC:ObservedSources(recipeID)) do table.insert(all, source) end
     for _, source in ipairs(FC.CookingSources and FC.CookingSources[recipeID] or {}) do table.insert(all, source) end
+    if #all == 0 then
+        for _, source in ipairs(FC.SuggestedSources and FC.SuggestedSources[recipeID] or {}) do table.insert(all, source) end
+    end
     if #all == 0 then return nil end
     local faction = UnitFactionGroup and UnitFactionGroup("player")
     local usable, other = {}, nil
@@ -234,16 +283,16 @@ function FC:RecipeZone(recipeID)
 end
 
 -- Short form for tooltips, e.g. "Vendor (Horde)" or "Alliance only".
--- With `bare`, just the method ("Vendor", "Drop", "Recipe scroll", ...) for the
+-- With `bare`, just the method ("Vendor", "Drop", "Quest", ... or "Unknown") for the
 -- Recipes tab; the detail pop-up has the rest.
 function FC:RecipeSourceShort(recipeID, bare)
     local usable, other = usableSources(recipeID)
     if usable and usable[1] then return bare and usable[1].type or sourceLabel(usable[1]) end
     if other then return other .. " only" end
-    local recipe = recipes[recipeID]
-    if recipe and recipe.items then return "Recipe scroll" end
-    if recipe and recipe.auto then return "Automatic" end
-    return "Trainer"
+    -- The game data marks it as learned together with Cooking.
+    if recipes[recipeID] and recipes[recipeID].auto then return "Automatic" end
+    -- Nothing confirmed or suggested.
+    return "Unknown"
 end
 
 -- Tooltips ---------------------------------------------------------------------
@@ -439,9 +488,28 @@ function FC:RecipeDetail(recipeID)
             end
         end
     end
-    if #detail.locations == 0 and recipe.items then
-        add({ label = "Recipe scroll", who = itemName(recipe.items[1]) or "Recipe scroll", noWaypoint = true,
-            note = "Where it drops or is sold is not known yet. It is recorded when you find it." })
+    -- Nothing confirmed: show what a single website suggests (marked Suggested until
+    -- it is found in game), or Unknown.
+    if #detail.locations == 0 and not next(detail.hidden) then
+        for _, source in ipairs(self.SuggestedSources and self.SuggestedSources[recipeID] or {}) do
+            if OPEN_TO_ALL[source.faction] or source.faction == faction then
+                local x, y = parseXY(source.coords)
+                if source.giver then
+                    add({ label = sourceLabel(source), who = source.giver, quest = source.who, zone = source.zone,
+                        x = x, y = y, suggested = true, note = source.note })
+                else
+                    add({ label = sourceLabel(source), who = source.who, zone = source.zone, x = x, y = y,
+                        suggested = true, note = source.note })
+                end
+            end
+        end
+    end
+    if #detail.locations == 0 and not next(detail.hidden) and recipe.auto then
+        add({ label = "Automatic", who = "learned together with Cooking", noWaypoint = true })
+    end
+    if #detail.locations == 0 and not next(detail.hidden) then
+        add({ label = "Unknown", who = "not confirmed yet", noWaypoint = true,
+            note = "No two sources agree on where this is learned. It is recorded here once you find it in game." })
     end
     return detail
 end
@@ -449,13 +517,21 @@ end
 function FC:RecipeRows()
     local rows = {}
     for recipeID, recipe in pairs(recipes) do
-        local known = self:IsRecipeKnown(recipeID)
-        table.insert(rows, {
-            id = recipeID, name = spellName(recipeID, recipe.name), known = known,
-            learnFrom = known and "" or self:RecipeSourceShort(recipeID, true),
-            category = known and "Known" or self:RecipeSourceShort(recipeID, true),
-            zone = known and "" or self:RecipeZone(recipeID),
-        })
+        -- same-name copies show as one row (see `primary`)
+        if primary[recipeID] == recipeID then
+            local known = self:IsRecipeKnown(recipeID)
+            -- [New] only when every same-name copy is new to Forever
+            local new = true
+            for _, id in ipairs(copies[recipeID]) do
+                if not (FC.NewRecipes and FC.NewRecipes[id]) then new = false end
+            end
+            table.insert(rows, {
+                id = recipeID, name = spellName(recipeID, recipe.name), known = known, new = new,
+                learnFrom = known and "" or self:RecipeSourceShort(recipeID, true),
+                category = known and "Known" or self:RecipeSourceShort(recipeID, true),
+                zone = known and "" or self:RecipeZone(recipeID),
+            })
+        end
     end
     return rows
 end
@@ -464,8 +540,10 @@ end
 function FC:RecipeStats()
     local total, known = 0, 0
     for recipeID in pairs(recipes) do
-        total = total + 1
-        if self:IsRecipeKnown(recipeID) then known = known + 1 end
+        if primary[recipeID] == recipeID then
+            total = total + 1
+            if self:IsRecipeKnown(recipeID) then known = known + 1 end
+        end
     end
     return total, known
 end

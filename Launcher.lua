@@ -2,37 +2,24 @@ local ADDON_NAME, FC = ...
 
 -- Minimap button, LibDataBroker launcher (when a broker display is installed)
 -- and Addon Compartment entry, following Forever Profession Master's pattern.
--- The brand mark is a recipe scroll with the cooking icon over its corner.
--- Places that only take a single texture (broker bars, the AddOns list) use
--- the cooking icon alone.
-local SCROLL_ICON = "Interface\\Icons\\INV_Scroll_03"
-local COOKING_ICON = "Interface\\Icons\\INV_Misc_Food_15"
-local ICON = COOKING_ICON
+-- The minimap button, broker bars and the AddOns list show ICON; the window
+-- header and pop-ups use CreateBrandIcon (the CurseForge project logo).
+-- The project logo on its dark tile, made from Resources/art/ForeverChef-logo-512.png
+-- by ForeverChef-tools/make_logo_blp.py.
+local LOGO = "Interface\\AddOns\\ForeverChef\\Media\\ForeverChefLogo.blp"
+-- The addon's own artwork (a chef's hat on an infinity sign), drawn by
+-- ForeverChef-tools/make_icons.py. BLP is WoW's native texture format.
+local ICON = "Interface\\AddOns\\ForeverChef\\Media\\ForeverChefIcon.blp"
 local MINIMAP_PADDING = 10
 
 FC.ICON = ICON
 
--- Draws the scroll filling `size`, with the cooking icon at about 60% size
--- in the bottom-right corner, outlined so it reads against the scroll.
+-- The project logo, `size` pixels square.
 function FC:CreateBrandIcon(parent, size, layer)
-    local scroll = parent:CreateTexture(nil, layer or "ARTWORK", nil, 0)
-    scroll:SetTexture(SCROLL_ICON)
-    scroll:SetSize(size, size)
-    scroll:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-
-    local badgeSize = math.floor(size * 0.6 + 0.5)
-    local outline = parent:CreateTexture(nil, layer or "ARTWORK", nil, 1)
-    outline:SetColorTexture(0, 0, 0, 0.9)
-    outline:SetSize(badgeSize + 2, badgeSize + 2)
-    outline:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", math.floor(size * 0.15), -math.floor(size * 0.15))
-
-    local cooking = parent:CreateTexture(nil, layer or "ARTWORK", nil, 2)
-    cooking:SetTexture(COOKING_ICON)
-    cooking:SetSize(badgeSize, badgeSize)
-    cooking:SetPoint("CENTER", outline, "CENTER")
-    cooking:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-
-    return scroll
+    local logo = parent:CreateTexture(nil, layer or "ARTWORK")
+    logo:SetTexture(LOGO)
+    logo:SetSize(size, size)
+    return logo
 end
 
 local function addTooltipLines(tooltip)
@@ -94,9 +81,10 @@ local function createMinimapButton()
     background:SetSize(20, 20)
     background:SetPoint("CENTER")
 
-    -- Nudged up-left so the corner badge stays inside the round border.
-    local icon = FC:CreateBrandIcon(button, 18)
-    icon:SetPoint("CENTER", -2, 2)
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetTexture(ICON)
+    icon:SetSize(21, 21)
+    icon:SetPoint("CENTER", 0, 1)
 
     local highlight = button:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")

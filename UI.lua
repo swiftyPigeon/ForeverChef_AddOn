@@ -54,6 +54,37 @@ local function button(parent, text, width, onClick)
     return b
 end
 
+-- A metallic gold button (Media/GoldButton.blp, drawn by ForeverChef-tools/
+-- make_gold_button.py) with black text, framed by a thin black line and a light
+-- blue one inside it; used for the header's Cooking ranks button.
+local GOLD_TEXTURE = "Interface\\AddOns\\ForeverChef\\Media\\GoldButton.blp"
+local LIGHT_BLUE = { 0.50, 0.78, 1.00, 1 }
+local function goldButton(parent, text, width, onClick)
+    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    b:SetSize(width, 26)
+    backdrop(b, { 0, 0, 0, 1 }, { 0, 0, 0, 1 })
+    local face = b:CreateTexture(nil, "ARTWORK")
+    face:SetPoint("TOPLEFT", 2, -2)
+    face:SetPoint("BOTTOMRIGHT", -2, 2)
+    face:SetTexture(GOLD_TEXTURE)
+    local inner = CreateFrame("Frame", nil, b, "BackdropTemplate")
+    inner:SetPoint("TOPLEFT", 1, -1)
+    inner:SetPoint("BOTTOMRIGHT", -1, 1)
+    inner:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+    inner:SetBackdropBorderColor(unpack(LIGHT_BLUE))
+    local shine = b:CreateTexture(nil, "HIGHLIGHT")
+    shine:SetAllPoints(face)
+    shine:SetColorTexture(1, 1, 1, 0.18)
+    b.label = label(inner, 11, { 0, 0, 0, 1 }, "CENTER")
+    -- a pale gold edge under the letters keeps them readable over the streaks
+    b.label:SetShadowColor(1, 0.96, 0.82, 0.85)
+    b.label:SetShadowOffset(1, -1)
+    b.label:SetPoint("CENTER")
+    b.label:SetText(text)
+    b:SetScript("OnClick", onClick)
+    return b
+end
+
 -- The recipe table: column layout, row builder, and what to say when it is empty.
 -- (Kept as a list of tables so more views can be added later.)
 -- Columns are { title, width, justify, group = true }; clicking a header sorts by
@@ -70,7 +101,8 @@ local TABS = {
             for _, r in ipairs(FC:RecipeRows()) do
                 local status = r.known and "Known" or "Not known"
                 table.insert(rows, {
-                    r.name, r.known and "|cff40d15cKnown|r" or "|cffed4540Not known|r", r.learnFrom, r.zone,
+                    r.new and (r.name .. " |cff7fc8ff[New]|r") or r.name,
+                    r.known and "|cff40d15cKnown|r" or "|cffed4540Not known|r", r.learnFrom, r.zone,
                     sort = { r.name, status, r.learnFrom, r.zone },
                     group = { nil, status, r.category, r.zone },
                     known = r.known, recipeID = r.id,
@@ -78,7 +110,7 @@ local TABS = {
             end
             table.sort(rows, function(a, b)
                 if a.known ~= b.known then return not a.known end
-                return a[1] < b[1]
+                return a.sort[1]:lower() < b.sort[1]:lower()
             end)
             return rows
         end,
@@ -312,8 +344,8 @@ local function createWindow()
     header:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
     backdrop(header, C.panel, C.border)
 
-    local icon = FC:CreateBrandIcon(header, 30)
-    icon:SetPoint("LEFT", 12, 3)
+    local icon = FC:CreateBrandIcon(header, 34)
+    icon:SetPoint("LEFT", 12, 0)
     local title = label(header, 16, C.text)
     title:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -2)
     title:SetText("FOREVER CHEF")
@@ -323,6 +355,8 @@ local function createWindow()
     local close = button(header, "×", 30, function() frame:Hide() end)
     close:SetPoint("RIGHT", -11, 0)
     close.label:SetFont(STANDARD_TEXT_FONT, 17, "")
+    frame.ranksButton = goldButton(header, "Cooking ranks", 110, function() FC:ToggleRanks() end)
+    frame.ranksButton:SetPoint("RIGHT", close, "LEFT", -8, 0)
 
     -- Counters
     frame.stats = {}
@@ -404,20 +438,16 @@ local function createWindow()
     frame.emptyText:SetWordWrap(true)
 
     -- Footer
-    local export = button(frame, "Export data", 110, function() FC:ShowExport() end)
-    export:SetPoint("BOTTOMLEFT", 16, 16)
+    -- Exporting recorded data is /fchef export only.
     frame.quietButton = button(frame, "", 150, function()
         FC.char.quiet = not FC.char.quiet
         FC:RefreshLists()
     end)
-    frame.quietButton:SetPoint("LEFT", export, "RIGHT", 8, 0)
-    -- Clears the map pin and TomTom arrow Forever Chef set (dimmed when there is none).
+    frame.quietButton:SetPoint("BOTTOMLEFT", 16, 16)
+    -- Clears every waypoint and TomTom arrow Forever Chef set (dimmed when there is none).
     frame.clearWaypointsButton = button(frame, "Reset All Waypoints", 150, function()
         local count = #FC:Waypoints()
-        if count == 0 then
-            FC:ShowToast("There is no Forever Chef waypoint to clear.")
-            return
-        end
+        if count == 0 then return end   -- the button is dimmed then; nothing to say
         FC:ClearWaypoint()
         FC:ShowToast(count == 1 and "Waypoint cleared." or string.format("%d waypoints cleared.", count))
     end)

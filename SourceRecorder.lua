@@ -1,8 +1,9 @@
 local ADDON_NAME, FC = ...
 
--- Records where Cooking recipe scrolls are actually found in game, filling the
--- gaps the researched list (CookingSources.lua) cannot:
+-- Records where Cooking recipes are actually found in game, filling the gaps
+-- the researched list (CookingSources.lua) cannot:
 --   merchant windows -> Vendor (the vendor's own faction, price or currency cost)
+--   trainer windows  -> Trainer (every Cooking recipe the trainer lists)
 --   loot windows     -> Drop / Container (anyone can loot, so Neutral)
 --   quest rewards    -> Quest (the quest giver's faction)
 -- Saved account-wide, shown ahead of researched sources, and included in /fchef export.
@@ -66,10 +67,11 @@ local function here()
     return zone, mapID, x, y
 end
 
-local function record(itemID, source)
-    local recipeIDs = FC:RecipesForScroll(itemID)
-    if not recipeIDs then return end
+-- Saves that `source` teaches these recipes. Returns how many were new.
+-- With `quiet`, no pop-up per recipe (the caller sums up instead).
+local function recordRecipes(recipeIDs, source, quiet)
     local zone, mapID, x, y = here()
+    local new = 0
     for _, recipeID in ipairs(recipeIDs) do
         FC.db.observed[recipeID] = FC.db.observed[recipeID] or {}
         local key = source.type .. ":" .. tostring(source.npcID or source.quest or source.who)
@@ -77,15 +79,24 @@ local function record(itemID, source)
         if not entry then
             entry = { seen = 0 }
             FC.db.observed[recipeID][key] = entry
-            FC:Notify(string.format("Found where to learn %s: %s %s (%s).",
-                FC.CookingData[recipeID] and FC.CookingData[recipeID].name or ("recipe " .. recipeID),
-                source.type:lower(), source.who, zone))
+            new = new + 1
+            if not quiet then
+                FC:Notify(string.format("Found where to learn %s: %s %s (%s).",
+                    FC.CookingData[recipeID] and FC.CookingData[recipeID].name or ("recipe " .. recipeID),
+                    source.type:lower(), source.who, zone))
+            end
             FC.listsDirty = true
         end
         for k, v in pairs(source) do entry[k] = v end
         entry.zone, entry.map, entry.x, entry.y = zone, mapID, x, y
         entry.seen, entry.last = entry.seen + 1, time()
     end
+    return new
+end
+
+local function record(itemID, source)
+    local recipeIDs = FC:RecipesForScroll(itemID)
+    if recipeIDs then recordRecipes(recipeIDs, source) end
 end
 
 -- NPC positions -------------------------------------------------------------------
@@ -163,6 +174,53 @@ local function queueMerchantScan()
     end)
 end
 
+-- Trainers ----------------------------------------------------------------------
+
+-- Reads the trainer window: every Cooking recipe it lists, learnable or not,
+-- is recorded as taught by this trainer. Only what is listed is used; a recipe
+-- missing from the list proves nothing (filters may hide it).
+local trainerPending
+local function scanTrainer()
+    if not (GetNumTrainerServices and GetTrainerServiceInfo) then return end
+    local npcID = parseGUID(UnitGUID and UnitGUID("npc"))
+    local who = UnitName and UnitName("npc")
+    if not npcID or not who or isSecret(who) then return end
+    local taught, ranks = {}, {}
+    local cooking = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(2550)) or "Cooking"
+    for i = 1, GetNumTrainerServices() do
+        local name, subText, kind = GetTrainerServiceInfo(i)
+        if name and kind ~= "header" and not isSecret(name) then
+            for _, recipeID in ipairs(FC:RecipesNamed(name) or {}) do table.insert(taught, recipeID) end
+            -- ranks appear as "Cooking" with the rank as subtext, or as "<Rank> Cooking"
+            for _, rank in ipairs({ "Apprentice", "Journeyman", "Expert", "Artisan" }) do
+                if (name == cooking and subText == rank) or name == rank .. " " .. cooking then ranks[rank] = true end
+            end
+        end
+    end
+    if next(ranks) then
+        local zone, mapID, x, y = here()
+        FC.db.trainerRanks = FC.db.trainerRanks or {}
+        FC.db.trainerRanks[who] = { ranks = ranks, faction = unitFaction("npc"), zone = zone, map = mapID, x = x, y = y, last = time() }
+        FC.listsDirty = true
+    end
+    if #taught == 0 then return end
+    local new = recordRecipes(taught, { type = "Trainer", faction = unitFaction("npc"), who = who, npcID = npcID }, true)
+    if new > 0 then
+        FC:Notify(string.format("%s teaches %d Cooking recipes (%d newly found).", who, #taught, new))
+    end
+end
+
+-- The list can fill in over several updates; read it once it settles.
+local function queueTrainerScan()
+    if trainerPending then return end
+    trainerPending = true
+    C_Timer.After(0.5, function()
+        trainerPending = nil
+        local ok, err = pcall(scanTrainer)
+        if not ok then FC:Debug("Trainer scan: " .. tostring(err)) end
+    end)
+end
+
 -- Loot --------------------------------------------------------------------------
 
 local function rememberUnit(unit)
@@ -211,8 +269,9 @@ local function scanQuestRewards()
             local itemID = itemIDFromLink(GetQuestItemLink(kind, i))
             if itemID and FC:RecipesForScroll(itemID) then
                 local who = title
-                if giver and not isSecret(giver) then who = title .. " (from " .. giver .. ")" end
-                record(itemID, { type = "Quest", faction = unitFaction("npc"), who = who, quest = title })
+                if giver and isSecret(giver) then giver = nil end
+                if giver then who = title .. " (from " .. giver .. ")" end
+                record(itemID, { type = "Quest", faction = unitFaction("npc"), who = who, quest = title, giver = giver })
             end
         end
     end
@@ -264,6 +323,8 @@ FC:On("MERCHANT_SHOW", queueMerchantScan)
 FC:On("MERCHANT_UPDATE", queueMerchantScan)
 FC:On("LOOT_OPENED", safely(scanLoot))
 FC:On("TRAINER_SHOW", safely(recordNPCLocation))
+FC:On("TRAINER_SHOW", queueTrainerScan)
+FC:On("TRAINER_UPDATE", queueTrainerScan)
 -- Quest dialogs: the player stands at the quest giver (objects and items have no NPC ID and are skipped).
 for _, event in ipairs({ "QUEST_DETAIL", "QUEST_PROGRESS", "QUEST_COMPLETE", "QUEST_GREETING" }) do
     FC:On(event, safely(recordNPCLocation))
