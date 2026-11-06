@@ -1,7 +1,7 @@
 local ADDON_NAME, FC = ...
 
 -- Pop-up with everything about one Cooking recipe, opened by clicking its row in
--- the Recipes tab: status, required skill, ingredients (and how many you carry),
+-- the Recipes tab: status, required skill, ingredients (and how many you have in bags and bank),
 -- every place to learn it, and what eating the food does. Each place with a map position has a radio
 -- button that sets a map waypoint (and a TomTom arrow when TomTom is installed). A recipe with no
 -- confirmed place shows "Suggested" ones instead (named by a single website).
@@ -39,10 +39,9 @@ local function itemLabel(itemID)
     return FC:ItemName(itemID) or ("Item #" .. itemID .. " (loading)")
 end
 
+-- Bags + bank (the bank as of your last visit), same count the tooltips use.
 local function itemCount(itemID)
-    local count = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(itemID)
-    if not count and GetItemCount then count = GetItemCount(itemID) end
-    return count or 0
+    return FC:ItemCount(itemID)
 end
 
 -- Pools: text lines and location rows are reused between recipes.
@@ -169,7 +168,7 @@ local function render(detail)
     end
     if detail.locations[1] and detail.locations[1].suggested then
         local line = takeText(10, C.muted)
-        line:SetText("Suggested by one source only; confirmed once found in game.")
+        line:SetText("Suggested by one source only; confirmed once two players find it in game.")
         y = placeText(line, y + 2, 4)
     end
     local hidden = {}

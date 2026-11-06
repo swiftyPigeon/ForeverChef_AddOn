@@ -448,6 +448,8 @@ local function createWindow()
     close.label:SetFont(STANDARD_TEXT_FONT, 17, "")
     frame.ranksButton = goldButton(header, "Cooking ranks", 110, function() FC:ToggleRanks() end)
     frame.ranksButton:SetPoint("RIGHT", close, "LEFT", -8, 0)
+    frame.newsButton = button(header, "What's new", 84, function() FC:ToggleLetter() end)
+    frame.newsButton:SetPoint("RIGHT", frame.ranksButton, "LEFT", -8, 0)
 
     -- Counters
     frame.stats = {}

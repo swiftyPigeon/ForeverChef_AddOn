@@ -1,18 +1,22 @@
 local ADDON_NAME, FC = ...
 
 -- Cooking recipes on ingredient tooltips: green = this character knows the
--- recipe, red = not yet. Every recipe comes from the built-in list
+-- recipe and has every ingredient (bags + bank), orange = knows it but is
+-- missing ingredients, red = not learned yet. Every recipe comes from the built-in list
 -- (CookingData.lua), so tooltips work before the Cooking window is opened and
 -- on characters without Cooking. Opening the Cooking window adds anything the
 -- list is missing (hotfixed recipes) and the trainer/vendor text for unlearned
 -- recipes.
 --   db.recipes[recipeID]    = { name, reagents = { [itemID] = count }, source }  -- from the Cooking window
 --   char.knownRecipes[id]   = true                                               -- seen learned in the Cooking window
+--   char.bank[itemID]       = count                                              -- bank contents, as of the last bank visit
 local COOKING_SKILL_LINE = 185
 local COOKING_SPELL = 2550
 local MAX_TOOLTIP_RECIPES = 14
-local KNOWN_COLOR = { 0.25, 0.82, 0.36 }
+local CAN_MAKE_COLOR = { 0.25, 0.82, 0.36 }   -- known, all ingredients on hand
+local NO_MATS_COLOR = { 1.00, 0.60, 0.15 }    -- known, ingredients missing
 local UNKNOWN_COLOR = { 0.93, 0.27, 0.24 }
+local HEADER_COLOR = { 0.93, 0.91, 0.86 }     -- off-white "Cooking recipes" heading
 local HEADER_ICON = "|TInterface\\Icons\\INV_Misc_Food_15:14:14:0:0|t "
 
 local recipes = {}     -- recipeID -> { name, reagents = { [itemID] = count }, items, auto, source }
@@ -295,6 +299,69 @@ function FC:RecipeSourceShort(recipeID, bare)
     return "Unknown"
 end
 
+-- Ingredients on hand ----------------------------------------------------------
+-- Bags come from the game. The bank is only readable while it is open, so its
+-- contents are saved per character at each visit and used everywhere else.
+
+local function containerItem(bag, slot)
+    if C_Container and C_Container.GetContainerItemInfo then
+        local info = C_Container.GetContainerItemInfo(bag, slot)
+        if info then return info.itemID, info.stackCount end
+        return nil
+    end
+    if GetContainerItemInfo then
+        local _, count, _, _, _, _, _, _, _, id = GetContainerItemInfo(bag, slot)
+        return id, count
+    end
+end
+
+local function slotCount(bag)
+    if C_Container and C_Container.GetContainerNumSlots then return C_Container.GetContainerNumSlots(bag) or 0 end
+    return GetContainerNumSlots and GetContainerNumSlots(bag) or 0
+end
+
+local function scanBank()
+    local bank = {}
+    local bags = { BANK_CONTAINER or -1 }
+    local first = (NUM_BAG_SLOTS or 4) + 1
+    for bag = first, first + (NUM_BANKBAGSLOTS or 6) - 1 do table.insert(bags, bag) end
+    for _, bag in ipairs(bags) do
+        for slot = 1, slotCount(bag) do
+            local id, count = containerItem(bag, slot)
+            if id then bank[id] = (bank[id] or 0) + (count or 1) end
+        end
+    end
+    FC.char.bank = bank
+end
+
+local bankOpen
+FC:On("BANKFRAME_OPENED", function() bankOpen = true; scanBank() end)
+FC:On("BANKFRAME_CLOSED", function() if bankOpen then scanBank() end bankOpen = nil end)
+FC:On("PLAYERBANKSLOTS_CHANGED", function() if bankOpen then scanBank() end end)
+FC:On("BAG_UPDATE_DELAYED", function() if bankOpen then scanBank() end end)
+
+local function bagCount(itemID)
+    local count = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(itemID)
+    if not count and GetItemCount then count = GetItemCount(itemID) end
+    return count or 0
+end
+
+-- How many of an item this character has in bags and bank.
+function FC:ItemCount(itemID)
+    local bank = self.char and self.char.bank and self.char.bank[itemID] or 0
+    return bagCount(itemID) + bank
+end
+
+-- True when every ingredient of the recipe is in bags or bank in the needed amount.
+function FC:HasReagents(recipeID)
+    local recipe = recipes[recipeID]
+    if not recipe or not next(recipe.reagents) then return false end
+    for itemID, count in pairs(recipe.reagents) do
+        if self:ItemCount(itemID) < count then return false end
+    end
+    return true
+end
+
 -- Tooltips ---------------------------------------------------------------------
 
 local function addTooltipLines(tooltip, itemID)
@@ -308,28 +375,34 @@ local function addTooltipLines(tooltip, itemID)
         local name = spellName(recipeID, recipe.name)
         local entry = byName[name]
         if not entry then
-            entry = { name = name, known = false, count = recipe.reagents[itemID] or 1, recipeID = recipeID }
+            entry = { name = name, known = false, canMake = false, count = recipe.reagents[itemID] or 1,
+                recipeID = recipeID }
             byName[name] = entry
         elseif FC.CookingSources and FC.CookingSources[recipeID] then
             entry.recipeID = recipeID   -- prefer the copy that has researched sources
         end
-        entry.known = entry.known or FC:IsRecipeKnown(recipeID)
+        if FC:IsRecipeKnown(recipeID) then
+            entry.known = true
+            entry.canMake = entry.canMake or FC:HasReagents(recipeID)
+        end
     end
     local entries = {}
     for _, entry in pairs(byName) do table.insert(entries, entry) end
+    -- can make first, then known, then not learned
     table.sort(entries, function(a, b)
+        if a.canMake ~= b.canMake then return a.canMake end
         if a.known ~= b.known then return a.known end
         return a.name < b.name
     end)
 
     tooltip:AddLine(" ")
-    tooltip:AddLine(HEADER_ICON .. "Cooking recipes", unpack(FC.COLORS.accent))
+    tooltip:AddLine(HEADER_ICON .. "Cooking recipes", unpack(HEADER_COLOR))
     for i, entry in ipairs(entries) do
         if i > MAX_TOOLTIP_RECIPES then
             tooltip:AddLine(string.format("   ...and %d more (see /fchef)", #entries - MAX_TOOLTIP_RECIPES), 0.54, 0.60, 0.68)
             break
         end
-        local color = entry.known and KNOWN_COLOR or UNKNOWN_COLOR
+        local color = entry.canMake and CAN_MAKE_COLOR or entry.known and NO_MATS_COLOR or UNKNOWN_COLOR
         local count = entry.count > 1 and string.format(" (x%d)", entry.count) or ""
         if entry.known then
             tooltip:AddLine("   " .. entry.name .. count, color[1], color[2], color[3])

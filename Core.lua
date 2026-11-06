@@ -51,14 +51,19 @@ function FC.Round(value, places)
     return math.floor(value * mult + 0.5) / mult
 end
 
-local function newDB()
-    return { version = DB_VERSION, recipes = {}, observed = {}, npcLocations = {}, trainerRanks = {} }
+-- Kept when recorded data is erased: the export's player code and which letter was read.
+local KEEP = { "playerID", "letterSeen" }
+
+local function newDB(old)
+    local db = { version = DB_VERSION, recipes = {}, observed = {}, npcLocations = {}, trainerRanks = {} }
+    for _, key in ipairs(KEEP) do db[key] = type(old) == "table" and old[key] or nil end
+    return db
 end
 
 FC:On("ADDON_LOADED", function(_, name)
     if name ~= ADDON_NAME then return end
     if type(ForeverChefDB) ~= "table" or ForeverChefDB.version ~= DB_VERSION then
-        ForeverChefDB = newDB()
+        ForeverChefDB = newDB(ForeverChefDB)
     end
     ForeverChefCharDB = ForeverChefCharDB or {}
     -- Travel recording (routes, flights, towns) was removed in 0.6.0: drop what it saved.
@@ -90,6 +95,8 @@ function FC:HandleSlash(message)
         self:ShowToast("Pop-up moved back above action bar 1.")
     elseif command == "" then
         self:ToggleWindow()
+    elseif command == "news" or command == "letter" then
+        self:ToggleLetter()
     elseif command == "ranks" then
         self:ToggleRanks()
     elseif command == "reset" then
@@ -98,7 +105,7 @@ function FC:HandleSlash(message)
         local total, known = self:RecipeStats()
         self:Print(string.format("You know %d of %d Cooking recipes.", known, total))
         self:Print(string.format("Recorded in game: %d recipe sources, %d NPC positions.", self:ObservedCount(), self:NPCLocationCount()))
-        self:Print("Commands: /fchef (window) | ranks | status | export | quiet | toast | toast reset | debug | reset")
+        self:Print("Commands: /fchef (window) | ranks | news | status | export | quiet | toast | toast reset | debug | reset")
     end
 end
 
@@ -107,7 +114,7 @@ StaticPopupDialogs["FOREVERCHEF_RESET"] = {
     button1 = YES,
     button2 = NO,
     OnAccept = function()
-        ForeverChefDB = newDB()
+        ForeverChefDB = newDB(FC.db)
         FC.db = ForeverChefDB
         FC.RebuildRecipeIndex()
         FC.listsDirty = true

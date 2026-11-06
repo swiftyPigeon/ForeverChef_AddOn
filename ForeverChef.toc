@@ -4,7 +4,7 @@
 ## Author: swiftyPigeon
 ## X-License: MIT
 ## X-Website: https://github.com/swiftyPigeon/ForeverChef_AddOn
-## Version: 0.7.0
+## Version: 0.8.0
 ## SavedVariables: ForeverChefDB
 ## SavedVariablesPerCharacter: ForeverChefCharDB
 ## IconTexture: Interface\AddOns\ForeverChef\Media\ForeverChefIcon.blp
@@ -27,3 +27,4 @@ MapPins.lua
 MinimapPins.lua
 RecipeDetail.lua
 Ranks.lua
+Letter.lua

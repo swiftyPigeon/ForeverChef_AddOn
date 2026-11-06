@@ -1,0 +1,32 @@
+name: Submit /fchef export
+description: Send what Forever Chef recorded in game (recipe vendors, trainers, drops, quest rewards, NPC positions).
+title: "Data export"
+labels: ["data-export"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping fill in the recipe data!
+
+        In game, type `/fchef export`. The text in the window is already selected:
+        press **Ctrl+C** (Cmd+C on a Mac) and paste it below, unchanged.
+
+        The export holds recipe IDs, NPC names and map positions only, never your
+        character name. A find becomes confirmed in the addon once two different
+        players have sent it in.
+  - type: textarea
+    id: export
+    attributes:
+      label: Export text
+      description: Everything from the export window, starting with "Forever Chef ... export".
+      placeholder: "Forever Chef 0.8.0 export | format 4 | Horde | interface 16000 | player 1a2b3c4d\nRecipe | ..."
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else? (optional)
+      description: For example a vendor that only appears at certain times, or a recipe that looked wrong.
+    validations:
+      required: false

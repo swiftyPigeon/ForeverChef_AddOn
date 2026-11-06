@@ -5,12 +5,28 @@ local ADDON_NAME, FC = ...
 -- Discord. ForeverChef-tools/build_sources_csv.py --observed reads it back.
 -- Everything comes from the log SourceRecorder.lua keeps while you play; only
 -- these are written (no character names):
+--   Forever Chef <version> export | format 4 | faction | interface <n> | player <id>
+--     header; <id> is a random code made once per account (db.playerID), so the
+--     tools can tell two players' finds apart without knowing who they are
 --   Recipe | recipeID | name | type | faction | who | npc <id> | zone | map <id> | x, y | cost | seen <n>
 --     a place a recipe was found that no two sources confirm yet
 --   NPC | name | faction | npc <id> | zone | map <id> | x, y
 --     a position recorded in game for an NPC in those finds, or one the built-in
 --     data has no confirmed position for
-local EXPORT_FORMAT = 3
+local EXPORT_FORMAT = 4
+
+-- Where players paste the export: the "Submit /fchef export" GitHub issue form.
+FC.EXPORT_URL = "https://github.com/swiftyPigeon/ForeverChef_AddOn/issues/new?template=data-export.yml"
+
+local function newPlayerID()
+    local id = ""
+    for _ = 1, 8 do id = id .. string.format("%x", math.random(0, 15)) end
+    return id
+end
+
+FC:OnInit(function()
+    if type(FC.db.playerID) ~= "string" or not FC.db.playerID:match("^%x+$") then FC.db.playerID = newPlayerID() end
+end)
 
 local function sortedKeys(t)
     local keys = {}
@@ -99,17 +115,45 @@ function FC:BuildExport()
         end
     end
     if #finds + #npcs == 0 then return nil, 0, 0 end
-    local lines = { string.format("Forever Chef %s export | format %d | %s | interface %s", version, EXPORT_FORMAT,
-        UnitFactionGroup("player") or "?", tostring(select(4, GetBuildInfo()))) }
+    local lines = { string.format("Forever Chef %s export | format %d | %s | interface %s | player %s", version,
+        EXPORT_FORMAT, UnitFactionGroup("player") or "?", tostring(select(4, GetBuildInfo())), db.playerID or "?") }
     for _, line in ipairs(finds) do table.insert(lines, line) end
     for _, line in ipairs(npcs) do table.insert(lines, line) end
     return table.concat(lines, "\n"), #finds, #npcs
 end
 
+-- A one-line, read-only box holding `url`: click selects it all for Ctrl+C (WoW cannot
+-- open links). Typing puts the link back. Also used by the What's New letter.
+function FC:CreateLinkBox(parent, url, background, border, textColor, onEscape)
+    local box = CreateFrame("EditBox", nil, parent, "BackdropTemplate")
+    box:SetHeight(24)
+    box:SetAutoFocus(false)
+    box:SetFontObject(ChatFontNormal)
+    box:SetTextInsets(8, 8, 0, 0)
+    box:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+    box:SetBackdropColor(unpack(background))
+    box:SetBackdropBorderColor(unpack(border))
+    box:SetTextColor(unpack(textColor))
+    box:SetText(url)
+    box:SetCursorPosition(0)
+    box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    box:SetScript("OnEditFocusLost", function(self) self:HighlightText(0, 0) end)
+    box:SetScript("OnMouseUp", function(self) self:SetFocus(); self:HighlightText() end)
+    box:SetScript("OnTextChanged", function(self, userInput)
+        if userInput then
+            self:SetText(url)
+            self:HighlightText()
+        end
+    end)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus(); if onEscape then onEscape() end end)
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    return box
+end
+
 local function createWindow()
     local C = FC.COLORS   -- defined in UI.lua, which loads after this file
     local frame = CreateFrame("Frame", "ForeverChefExportFrame", UIParent, "BackdropTemplate")
-    frame:SetSize(560, 420)
+    frame:SetSize(560, 470)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("DIALOG")
     frame:SetToplevel(true)
@@ -134,8 +178,22 @@ local function createWindow()
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -4, -4)
 
+    -- Step 1: the issue form link, in its own read-only box so it can be copied alone
+    -- (WoW cannot open links).
+    local step1 = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    step1:SetPoint("TOPLEFT", 16, -68)
+    step1:SetText("1. Copy this link into your web browser:")
+    local linkBox = FC:CreateLinkBox(frame, FC.EXPORT_URL, C.panel, C.border, C.text, function() frame:Hide() end)
+    linkBox:SetPoint("TOPLEFT", 12, -86)
+    linkBox:SetPoint("RIGHT", -12, 0)
+    frame.linkBox = linkBox
+
+    local step2 = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    step2:SetPoint("TOPLEFT", 16, -122)
+    step2:SetText("2. Copy the text below (Ctrl+C) and paste it into the form:")
+
     local box = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    box:SetPoint("TOPLEFT", 12, -64)
+    box:SetPoint("TOPLEFT", 12, -140)
     box:SetPoint("BOTTOMRIGHT", -12, 12)
     box:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
     box:SetBackdropColor(unpack(C.panel))
@@ -185,8 +243,8 @@ function FC:ShowExport()
     self.exportFrame = self.exportFrame or createWindow()
     local frame = self.exportFrame
     frame.text = text
-    frame.hint:SetText(string.format("%d recipe finds and %d NPC positions not yet confirmed. Ctrl+C copies the "
-        .. "selected text; paste it into a GitHub issue for the addon.", finds, npcs))
+    frame.hint:SetText(string.format("%d recipe finds and %d NPC positions not yet confirmed. Send them in and "
+        .. "they are added in a coming version.", finds, npcs))
     frame:Show()
     frame.edit:SetText(text)
     frame.edit:HighlightText()

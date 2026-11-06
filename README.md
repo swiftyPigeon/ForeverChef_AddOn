@@ -7,7 +7,9 @@ get there.
 ## Features
 
 - **Ingredient tooltips.** Hover any cooking ingredient to see every Cooking
-  recipe that uses it, in **green if you know it** and **red if you don't**, with
+  recipe that uses it: **green** if you know it and have every ingredient (bags
+  or bank), **orange** if you know it but are missing ingredients, **red** if you
+  haven't learned it yet, with
   how to learn the unknown ones ("Vendor (Horde)", "Trainer", "Drop", ...).
   All 132 Cooking recipes are built in, so this works right away, even on
   characters without Cooking.
@@ -23,7 +25,7 @@ get there.
   whose food gives that buff (Strength, Stamina, Spell Damage, Fishing skill,
   mana, camp features, ...), with how many recipes give each one.
 - **Recipe details.** Click a recipe for its ingredients (and how many you
-  carry), required skill, every vendor, trainer, quest giver or drop that
+  have in bags and bank), required skill, every vendor, trainer, quest giver or drop that
   teaches it, and the food's effect (health/mana and the Well Fed buff).
 - **Waypoints.** Each place with a known map position has a radio button that
   sets a waypoint. Track as many recipes as you like (one place each): they are
@@ -54,6 +56,7 @@ get there.
 | --- | --- |
 | `/fchef` | Open or close the Forever Chef window |
 | `/fchef ranks` | Open the Cooking ranks window |
+| `/fchef news` | Read the What's New letter again (it opens once after each update) |
 | `/fchef status` | How many recipes you know and how much has been recorded |
 | `/fchef export` | Copyable text of what you found in game that the addon does not confirm yet |
 | `/fchef quiet` | Turn the pop-up messages off or on |
@@ -65,7 +68,7 @@ get there.
 ## Install
 
 Install from CurseForge, or copy the `ForeverChef` folder into
-`World of Warcraft/_classic_beta_/Interface/AddOns/` (the WoW: Forever beta
+`World of Warcraft/_forever_/Interface/AddOns/` (the WoW: Forever
 client) and restart the game.
 
 ## How reliable is the data?
@@ -85,6 +88,9 @@ client) and restart the game.
 
 WoW: Forever is still in beta, so vendors, recipes and positions can change.
 If something is wrong, please open an issue with your `/fchef export` text.
+To send in what you found, use the link in the `/fchef export` window: it opens the
+**Submit /fchef export** form. A find becomes confirmed once two different players
+have sent it.
 
 ## Credits
 
